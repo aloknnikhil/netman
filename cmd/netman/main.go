@@ -2,8 +2,8 @@ package main
 
 import (
 	"context"
-	"time"
 
+	"go.ligato.io/vpp-agent/v3/pkg/models"
 	vpp_interfaces "go.ligato.io/vpp-agent/v3/proto/ligato/vpp/interfaces"
 
 	"github.com/pkg/errors"
@@ -18,20 +18,15 @@ const (
 	DefaultPortGRPC = 9111
 	// DefaultETCDEndpoint defines default endpoint for ETCD connection.
 	DefaultETCDEndpoint = "0.0.0.0:2379"
-)
-
-// Constants for etcd connection.
-const (
-	// defaultEtcdOpTimeout defines default dial timeout.
-	defaultEtcdDialTimeout = time.Second * 3
-	// defaultEtcdOpTimeout defines default timeout for a pending operation.
-	defaultEtcdOpTimeout = time.Second * 10
+	// DefaultServiceLabel of the VPP instance to control
+	DefaultServiceLabel = "meter_vpp"
 )
 
 func main() {
 	var err error
 	var syncClient *agent.Client
 	if syncClient, err = agent.NewClientWithOpts(
+		agent.WithServiceLabel(DefaultServiceLabel),
 		agent.WithHost(DefaultAgentHost),
 		agent.WithGrpcPort(DefaultPortGRPC),
 		agent.WithEtcdEndpoints(
@@ -71,4 +66,26 @@ func main() {
 		panic(errors.Wrap(err, "changeReq.Send()"))
 	}
 
+	// Create a LOOPBACK interface using the ETCD client
+	loop = &vpp_interfaces.Interface{
+		Name:        "loopMeETCD",
+		Type:        vpp_interfaces.Interface_SOFTWARE_LOOPBACK,
+		Enabled:     true,
+		PhysAddress: "de:ad:be:ef:99:99",
+		IpAddresses: []string{
+			"11.12.13.14/32",
+			"12.13.14.15/32",
+		},
+		Mtu: 1500,
+	}
+
+	var kvdb agent.KVDBAPIClient
+	if kvdb, err = syncClient.KVDBClient(); err != nil {
+		panic(errors.Wrap(err, "syncClient.KVDBClient()"))
+	}
+	var key string
+	if key, err = kvdb.CompleteFullKey(models.Key(loop)); err != nil {
+		panic(errors.Wrap(err, "kvdb.CompleteFullKey()"))
+	}
+	kvdb.ProtoBroker().Put(key, loop)
 }
