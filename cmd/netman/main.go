@@ -1,11 +1,6 @@
 package main
 
 import (
-	"context"
-
-	"go.ligato.io/vpp-agent/v3/pkg/models"
-	vpp_interfaces "go.ligato.io/vpp-agent/v3/proto/ligato/vpp/interfaces"
-
 	"github.com/pkg/errors"
 	config "go.ligato.io/vpp-agent/v3/client"
 	agent "go.ligato.io/vpp-agent/v3/cmd/agentctl/client"
@@ -43,49 +38,18 @@ func main() {
 		panic(errors.Wrap(err, "agent.ConfigClient()"))
 	}
 
-	// Create a LOOPBACK interface using the GRPC client
-	loop := &vpp_interfaces.Interface{
-		Name:        "loopMeGRPC",
-		Type:        vpp_interfaces.Interface_SOFTWARE_LOOPBACK,
-		Enabled:     true,
-		PhysAddress: "de:ad:be:ef:ba:ad",
-		IpAddresses: []string{
-			"1.2.3.4/32",
-			"2.3.4.5/32",
-		},
-		Mtu: 1500,
+	// TestLoopbackGRPC
+	if err = TestLoopbackGRPC(configClient); err != nil {
+		panic(errors.Wrap(err, "TestLoopbackGRPC()"))
 	}
 
-	// Start change transaction
-	// ATOMIC
-	// Add all necessary steps here before "sending" the transaction
-	changeReq := configClient.ChangeRequest()
-	changeReq.Update(loop)
-
-	if err = changeReq.Send(context.TODO()); err != nil {
-		panic(errors.Wrap(err, "changeReq.Send()"))
+	// TestLoopbackETCD
+	if err = TestLoopbackETCD(syncClient); err != nil {
+		panic(errors.Wrap(err, "TestLoopbackETCD()"))
 	}
 
-	// Create a LOOPBACK interface using the ETCD client
-	loop = &vpp_interfaces.Interface{
-		Name:        "loopMeETCD",
-		Type:        vpp_interfaces.Interface_SOFTWARE_LOOPBACK,
-		Enabled:     true,
-		PhysAddress: "de:ad:be:ef:99:99",
-		IpAddresses: []string{
-			"11.12.13.14/32",
-			"12.13.14.15/32",
-		},
-		Mtu: 1500,
+	// TestFailover
+	if err = TestFailover(configClient); err != nil {
+		panic(errors.Wrap(err, "TestFailover()"))
 	}
-
-	var kvdb agent.KVDBAPIClient
-	if kvdb, err = syncClient.KVDBClient(); err != nil {
-		panic(errors.Wrap(err, "syncClient.KVDBClient()"))
-	}
-	var key string
-	if key, err = kvdb.CompleteFullKey(models.Key(loop)); err != nil {
-		panic(errors.Wrap(err, "kvdb.CompleteFullKey()"))
-	}
-	kvdb.ProtoBroker().Put(key, loop)
 }
